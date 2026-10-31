@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticmq-config
+  namespace: pricewatch
+data:
+  elasticmq.conf: |
+    include classpath("application.conf")
+    node-address {
+      protocol = http
+      host = elasticmq.pricewatch.svc.cluster.local
+      port = 9324
+      context-path = ""
+    }
+    queues {
+      prices {
+        defaultVisibilityTimeout = 30 seconds
+        deadLettersQueue {
+          name = "prices-dlq"
+          maxReceiveCount = 3
+        }
+      }
+      prices-dlq { }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticmq
+  namespace: pricewatch
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: elasticmq}
+  template:
+    metadata:
+      labels: {app: elasticmq}
+    spec:
+      containers:
+        - name: elasticmq
+          image: softwaremill/elasticmq-native:1.7.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9324
+          volumeMounts:
+            - name: config
+              mountPath: /opt/elasticmq.conf
+              subPath: elasticmq.conf
+      volumes:
+        - name: config
+          configMap:
+            name: elasticmq-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticmq
+  namespace: pricewatch
+spec:
+  selector: {app: elasticmq}
+  ports:
+    - port: 9324
+      targetPort: 9324
